@@ -1,0 +1,9 @@
+node_modules/
+main.js
+*.map
+data.json
+sync-state.json
+.azurite/
+test-output/
+.e2e/
+*.tgz

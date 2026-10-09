@@ -1,0 +1,37 @@
+{
+  "name": "obsidian-azure-blob-sync",
+  "version": "1.0.0",
+  "description": "Obsidian plugin that live syncs a vault with an Azure Blob Storage container using a SAS token.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc --noEmit && node esbuild.config.mjs production",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run test/unit",
+    "test:integration": "vitest run test/integration",
+    "test:all": "vitest run test/unit test/integration",
+    "test:e2e": "vitest run test/e2e"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stefanmayer06/obsidian-blob-sync.git"
+  },
+  "author": "stefanmayer06",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/stefanmayer06/obsidian-blob-sync/issues"
+  },
+  "homepage": "https://github.com/stefanmayer06/obsidian-blob-sync#readme",
+  "devDependencies": {
+    "@azure/storage-blob": "^12.28.0",
+    "@types/node": "^22.20.5",
+    "azurite": "^3.35.0",
+    "builtin-modules": "^3.3.0",
+    "esbuild": "^0.24.0",
+    "obsidian": "^1.14.4",
+    "tslib": "^2.8.1",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  },
+  "private": true
+}

@@ -1,0 +1,33 @@
+.azure-blob-sync-wide {
+	width: 100%;
+	min-width: 16em;
+}
+
+.azure-blob-sync-sas-info {
+	margin-top: 4px;
+	font-size: var(--font-ui-smaller);
+}
+
+.azure-blob-sync-error {
+	color: var(--text-error);
+}
+
+.azure-blob-sync-test-result {
+	padding: 0 0 var(--size-4-3) 0;
+	font-size: var(--font-ui-small);
+	white-space: pre-wrap;
+}
+
+.azure-blob-sync-log {
+	max-height: 50vh;
+	overflow: auto;
+	font-size: var(--font-ui-smaller);
+	white-space: pre-wrap;
+	user-select: text;
+}
+
+.azure-blob-sync-list {
+	max-height: 30vh;
+	overflow: auto;
+	font-size: var(--font-ui-small);
+}
