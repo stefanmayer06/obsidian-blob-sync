@@ -52,11 +52,25 @@ types, and read/write/delete/list permissions.
 The plugin isn't in the community plugin list yet. Install it one of these ways:
 
 - **BRAT** (easiest, also on mobile): install the *Obsidian42 - BRAT* community plugin, choose
-  *Add beta plugin* and enter `stefanmayer06/obsidian-blob-sync`. This needs a GitHub release
-  that contains `main.js`, `manifest.json` and `styles.css`.
-- **Manually**: build it (`npm install && npm run build`) or download the release files. Copy
-  `main.js`, `manifest.json` and `styles.css` into `<your vault>/.obsidian/plugins/azure-blob-sync/`,
-  then enable *Azure Blob Sync* under *Settings → Community plugins*.
+  *Add beta plugin* and enter `stefanmayer06/obsidian-blob-sync`. BRAT installs the files
+  attached to the latest GitHub release (see [Publishing a release](#publishing-a-release)).
+- **Manually**: download `main.js`, `manifest.json` and `styles.css` from the latest release, or
+  build them yourself (`npm install && npm run build`). Copy them into
+  `<your vault>/.obsidian/plugins/azure-blob-sync/`, then enable *Azure Blob Sync* under
+  *Settings → Community plugins*.
+
+### Publishing a release
+
+BRAT reads `manifest.json`, `main.js` and `styles.css` from the release's **assets**, not from
+the repository. The *Release* GitHub Action builds and attaches them:
+
+1. Set the new version in `manifest.json` (and add it to `versions.json`), then commit to `main`.
+2. Publish a release on GitHub whose tag is **exactly** that version, e.g. `1.0.1` (no `v`
+   prefix). Pushing the tag with git works too.
+3. The *Release* action attaches the three files to the release within a minute or two.
+
+If a release is missing its files, open *Actions → Release → Run workflow* and enter the tag.
+The files are then built and attached to that existing release.
 
 ## 3. Connect
 
