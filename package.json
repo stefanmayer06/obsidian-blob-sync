@@ -1,6 +1,6 @@
 {
   "name": "obsidian-azure-blob-sync",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Obsidian plugin that live syncs a vault with an Azure Blob Storage container using a SAS token.",
   "main": "main.js",
   "scripts": {

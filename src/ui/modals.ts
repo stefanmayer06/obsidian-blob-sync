@@ -1,4 +1,4 @@
-import { App, Modal, Notice, Setting } from "obsidian";
+import { App, Modal, Setting } from "obsidian";
 import { makeDestructive } from "./buttons";
 
 export type DeletionDecision = "delete" | "keep" | "dismiss";
@@ -75,13 +75,9 @@ export class LogModal extends Modal {
 		const { contentEl } = this;
 		this.setTitle("Sync log");
 		const text = this.lines.length ? this.lines.join("\n") : "Nothing logged yet.";
+		// Selectable text instead of a copy button, so the plugin never touches the clipboard.
+		contentEl.createEl("p", { text: "Select the text to copy it.", cls: "setting-item-description" });
 		contentEl.createEl("pre", { text, cls: "azure-blob-sync-log" });
-		new Setting(contentEl).addButton((b) =>
-			b.setButtonText("Copy to clipboard").onClick(async () => {
-				await navigator.clipboard.writeText(text);
-				new Notice("Log copied");
-			}),
-		);
 	}
 
 	onClose(): void {
