@@ -403,6 +403,18 @@ describe.skipIf(!OBSIDIAN_BIN)("Obsidian end-to-end", { timeout: 90_000 }, () =>
 		await ev(`app.setting.close();`);
 	});
 
+	it("shows the sync log as selectable text", async () => {
+		await ev(`app.commands.executeCommandById('${PLUGIN}:show-log');`);
+		const text = await waitFor("log dialog", () =>
+			ev<string | undefined>(
+				`return [...activeDocument.querySelectorAll('.modal')].map(m => m.innerText).find(t => t.includes('Sync log'))`,
+			),
+		);
+		expect(text).toContain("Select the text to copy it.");
+		expect(text).toMatch(/Full sync: \d+ up/);
+		await ev(`activeDocument.querySelector('.modal .modal-close-button')?.click();`);
+	});
+
 	it("logged no errors in the Obsidian window", () => {
 		const errors = [...obsidian.cdp.exceptions, ...obsidian.cdp.consoleErrors].filter((e) =>
 			/azure|blob-sync/i.test(e),

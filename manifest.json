@@ -1,7 +1,7 @@
 {
 	"id": "azure-blob-sync",
 	"name": "Azure Blob Sync",
-	"version": "1.0.2",
+	"version": "1.0.3",
 	"minAppVersion": "1.6.6",
 	"description": "Live sync your vault with your own Azure Blob Storage container using a SAS token.",
 	"author": "stefanmayer06",

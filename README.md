@@ -29,7 +29,11 @@ between and the plugin is free; your notes stay in your own Azure subscription.
 - **Account required**: you need a Microsoft Azure account with a storage account. The plugin is
   free; Microsoft bills you for the storage and requests (typically cents a month, see *Cost*
   under [Good to know](#good-to-know)).
+- **Vault access**: to sync, the plugin lists every file in your vault, reads the ones that
+  changed, and creates, updates or moves to the trash the ones that changed on another device.
+  Files matching your ignore patterns, hidden files and the plugin's own folder are skipped.
 - **Files outside the vault**: none. The plugin only reads and writes files inside your vault.
+- **Clipboard**: not used.
 
 ## 1. Prepare Azure (one time, about 5 minutes)
 
