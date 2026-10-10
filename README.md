@@ -1,8 +1,8 @@
 # Azure Blob Sync for Obsidian
 
 Live-sync your Obsidian vault with **your own Azure Blob Storage container**. You connect with a
-SAS token, so anyone can point the plugin at their own storage account. No server, no
-subscription, and your notes stay in your Azure subscription.
+SAS token, so anyone can point the plugin at their own storage account. There's no server in
+between and the plugin is free; your notes stay in your own Azure subscription.
 
 - **Live sync**: edits are uploaded a few seconds after you stop typing. Changes from your other
   devices are pulled in on a schedule (every 30 s by default), when Obsidian starts, when it
@@ -19,6 +19,17 @@ subscription, and your notes stay in your Azure subscription.
 - Optional: sync the `.obsidian` settings folder, ignore patterns, upload-only (backup) or
   download-only (mirror) mode, a size limit, and a folder prefix so several vaults can share one
   container.
+
+## Disclosures
+
+- **Network use**: the plugin connects only to the Azure Blob Storage endpoint you configure
+  (by default `https://<account>.blob.core.windows.net`). It uses that connection to list, upload,
+  download and delete your vault's files in your container. Nothing is sent anywhere else: no
+  telemetry, no analytics, no third-party servers.
+- **Account required**: you need a Microsoft Azure account with a storage account. The plugin is
+  free; Microsoft bills you for the storage and requests (typically cents a month, see *Cost*
+  under [Good to know](#good-to-know)).
+- **Files outside the vault**: none. The plugin only reads and writes files inside your vault.
 
 ## 1. Prepare Azure (one time, about 5 minutes)
 
@@ -49,7 +60,8 @@ types, and read/write/delete/list permissions.
 
 ## 2. Install the plugin
 
-The plugin isn't in the community plugin list yet. Install it one of these ways:
+Once the plugin is listed in Obsidian's Community plugins, install it from *Settings → Community
+plugins → Browse* by searching for "Azure Blob Sync". Until then, install it one of these ways:
 
 - **BRAT** (easiest, also on mobile): install the *Obsidian42 - BRAT* community plugin, choose
   *Add beta plugin* and enter `stefanmayer06/obsidian-blob-sync`. BRAT installs the files
@@ -64,7 +76,9 @@ The plugin isn't in the community plugin list yet. Install it one of these ways:
 BRAT reads `manifest.json`, `main.js` and `styles.css` from the release's **assets**, not from
 the repository. The *Release* GitHub Action builds and attaches them:
 
-1. Set the new version in `manifest.json` (and add it to `versions.json`), then commit to `main`.
+1. Set the new version in `manifest.json` and `package.json`, add it to `versions.json`, then
+   commit to `main`. Run `npm run lint` first: it applies Obsidian's official plugin rules, the
+   same kind of checks the Community directory runs on every release.
 2. Publish a release on GitHub whose tag is **exactly** that version, e.g. `1.0.1` (no `v`
    prefix). Pushing the tag with git works too.
 3. The *Release* action attaches the three files to the release within a minute or two.
@@ -157,6 +171,7 @@ up too.
 npm install
 npm run build              # type-check + bundle main.js
 npm run dev                # rebuild on change
+npm run lint               # Obsidian's official plugin lint rules (eslint-plugin-obsidianmd)
 npm test                   # unit tests (engine, SAS parsing, XML, ignore rules, scheduler)
 npm run test:integration   # real HTTP against the Azurite storage emulator (started automatically)
 OBSIDIAN_BIN=/path/to/obsidian npm run test:e2e   # runs the built plugin inside the real Obsidian app
@@ -165,7 +180,8 @@ OBSIDIAN_BIN=/path/to/obsidian npm run test:e2e   # runs the built plugin inside
 The end-to-end test launches Obsidian (under Xvfb when there is no display) with a temporary
 vault. It installs the built plugin, connects to Azurite and simulates a second device. Then it
 checks the startup sync, live uploads, renames, folder moves, remote edits and deletions,
-conflict copies, the mass-deletion dialog, secret storage and the settings tab. On Linux, extract
+conflict copies, the mass-deletion dialog, secret storage, the settings tab and settings search.
+It passes on Obsidian 1.14 and on 1.6.7, the oldest version the plugin supports. On Linux, extract
 the AppImage with `--appimage-extract` and point `OBSIDIAN_BIN` at `squashfs-root/obsidian`.
 
 Code layout:

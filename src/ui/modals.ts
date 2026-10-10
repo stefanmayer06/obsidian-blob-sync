@@ -1,4 +1,5 @@
 import { App, Modal, Notice, Setting } from "obsidian";
+import { makeDestructive } from "./buttons";
 
 export type DeletionDecision = "delete" | "keep" | "dismiss";
 
@@ -17,7 +18,7 @@ export class ConfirmDeletionModal extends Modal {
 
 	onOpen(): void {
 		const { contentEl } = this;
-		this.setTitle("Azure Blob Sync: confirm deletions");
+		this.setTitle("Confirm deletions");
 		const parts: string[] = [];
 		if (this.local.length) parts.push(`${this.local.length} file(s) from this device (moved to trash)`);
 		if (this.remote.length) parts.push(`${this.remote.length} file(s) from Azure`);
@@ -43,12 +44,9 @@ export class ConfirmDeletionModal extends Modal {
 				}),
 			)
 			.addButton((b) =>
-				b
-					.setButtonText("Delete files")
-					.setWarning()
-					.onClick(() => {
-						this.decide("delete");
-					}),
+				makeDestructive(b.setButtonText("Delete files")).onClick(() => {
+					this.decide("delete");
+				}),
 			);
 	}
 
@@ -75,7 +73,7 @@ export class LogModal extends Modal {
 
 	onOpen(): void {
 		const { contentEl } = this;
-		this.setTitle("Azure Blob Sync log");
+		this.setTitle("Sync log");
 		const text = this.lines.length ? this.lines.join("\n") : "Nothing logged yet.";
 		contentEl.createEl("pre", { text, cls: "azure-blob-sync-log" });
 		new Setting(contentEl).addButton((b) =>

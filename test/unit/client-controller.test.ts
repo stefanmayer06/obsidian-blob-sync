@@ -215,6 +215,9 @@ describe("SyncController", () => {
 			onStatus: (s) => statuses.push(s),
 			onResult: (_r, t) => results.push(t),
 			onError: () => {},
+			// Node has no window timers; these are faked by vi.useFakeTimers().
+			setTimeout: (fn, ms) => setTimeout(fn, ms),
+			clearTimeout: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
 		});
 		return { c, statuses, results };
 	}

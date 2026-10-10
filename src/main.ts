@@ -66,7 +66,7 @@ export default class AzureBlobSyncPlugin extends Plugin {
 
 		this.settingTab = new AzureSyncSettingTab(this.app, this);
 		this.addSettingTab(this.settingTab);
-		this.addRibbonIcon("refresh-cw", "Sync with Azure Blob Storage", () => void this.syncNow("manual"));
+		this.addRibbonIcon("refresh-cw", "Sync with Azure", () => void this.syncNow("manual"));
 
 		this.addCommand({
 			id: "sync-now",
@@ -79,7 +79,7 @@ export default class AzureBlobSyncPlugin extends Plugin {
 			callback: async () => {
 				this.settings.liveSync = !this.settings.liveSync;
 				await this.saveSettings();
-				new Notice(`Azure Blob Sync: live sync ${this.settings.liveSync ? "on" : "off"}`);
+				this.notify(`live sync ${this.settings.liveSync ? "on" : "off"}`);
 				if (this.settings.liveSync) void this.syncNow("manual");
 			},
 		});
@@ -93,7 +93,7 @@ export default class AzureBlobSyncPlugin extends Plugin {
 			name: "Reset sync state (compare all files on next sync)",
 			callback: async () => {
 				await this.resetSyncState();
-				new Notice("Azure Blob Sync: sync state reset");
+				this.notify("sync state reset");
 			},
 		});
 
@@ -344,12 +344,12 @@ export default class AzureBlobSyncPlugin extends Plugin {
 
 	async syncNow(trigger: SyncTrigger = "manual"): Promise<SyncResult | null> {
 		if (!this.ready) {
-			new Notice("Azure Blob Sync: Obsidian is still loading, try again in a moment.");
+			this.notify("Obsidian is still loading, try again in a moment.");
 			return null;
 		}
 		const engine = this.getEngine();
 		if ("error" in engine) {
-			new Notice(`Azure Blob Sync: ${engine.error}`);
+			this.notify(engine.error);
 			this.setStatus({ kind: "unconfigured", message: engine.error });
 			return null;
 		}
@@ -374,8 +374,8 @@ export default class AzureBlobSyncPlugin extends Plugin {
 
 		for (const c of result.conflicts) {
 			if (c.resolution === "kept-both") {
-				new Notice(
-					`Azure Blob Sync: "${c.path}" was changed on this and another device. ` +
+				this.notify(
+					`"${c.path}" was changed on this and another device. ` +
 						`The other version was saved as "${c.conflictCopy}".`,
 					15000,
 				);
@@ -399,15 +399,15 @@ export default class AzureBlobSyncPlugin extends Plugin {
 		}
 
 		if (trigger === "manual") {
-			new Notice(
+			this.notify(
 				changes > 0
-					? `Azure Blob Sync: ${summary(result)}`
+					? summary(result)
 					: result.errors.length
-						? "Azure Blob Sync: finished with errors (see log)"
-						: "Azure Blob Sync: everything is up to date",
+						? "finished with errors (see log)"
+						: "everything is up to date",
 			);
 		} else if (changes > 0 && this.settings.notifyOnChanges) {
-			new Notice(`Azure Blob Sync: ${summary(result)}`);
+			this.notify(summary(result));
 		}
 	}
 
@@ -439,10 +439,15 @@ export default class AzureBlobSyncPlugin extends Plugin {
 		this.notifyError(message, trigger === "manual");
 	}
 
+	/** Shows a notice prefixed with the plugin name. */
+	private notify(message: string, timeout?: number): void {
+		new Notice(`${this.manifest.name}: ${message}`, timeout);
+	}
+
 	private notifyError(message: string, force: boolean): void {
 		if (!force && message === this.lastNotifiedError) return;
 		this.lastNotifiedError = message;
-		new Notice(`Azure Blob Sync: ${message}`, 10000);
+		this.notify(message, 10000);
 	}
 
 	private setStatus(status: SyncStatus): void {
@@ -501,10 +506,10 @@ export default class AzureBlobSyncPlugin extends Plugin {
 		if (!expiry) return;
 		const left = expiry.getTime() - Date.now();
 		if (left <= 0) {
-			new Notice("Azure Blob Sync: your SAS token has expired. Generate a new one and paste it in the plugin settings.", 0);
+			this.notify("your SAS token has expired. Generate a new one and paste it in the plugin settings.", 0);
 		} else if (left < 7 * 86_400_000) {
-			new Notice(
-				`Azure Blob Sync: your SAS token expires in ${describeTimeLeft(left)}. Generate a new one in the Azure portal before it stops syncing.`,
+			this.notify(
+				`your SAS token expires in ${describeTimeLeft(left)}. Generate a new one in the Azure portal before it stops syncing.`,
 				15000,
 			);
 		}
@@ -521,10 +526,10 @@ export default class AzureBlobSyncPlugin extends Plugin {
 		lines.push("✓ Connected and listed the container");
 		const name = `${conn.prefix}.azure-blob-sync-test-${Date.now().toString(36)}`;
 		const payload = new TextEncoder().encode("azure-blob-sync connection test").buffer;
-		await client.putBlob(name, payload as ArrayBuffer, { contentType: "text/plain" });
+		await client.putBlob(name, payload, { contentType: "text/plain" });
 		lines.push("✓ Write permission");
 		const { data } = await client.getBlob(name);
-		if (data.byteLength !== (payload as ArrayBuffer).byteLength) throw new Error("Read back different data than written.");
+		if (data.byteLength !== payload.byteLength) throw new Error("Read back different data than written.");
 		lines.push("✓ Read permission");
 		await client.deleteBlob(name);
 		lines.push("✓ Delete permission");
