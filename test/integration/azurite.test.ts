@@ -7,7 +7,7 @@ import { DEFAULT_ENGINE_OPTIONS, SyncEngine } from "../../src/sync/engine";
 import { createPathFilter } from "../../src/sync/filter";
 import { RemoteConflictError, emptyState } from "../../src/sync/types";
 import { sha256Hex } from "../../src/sync/util";
-import { fetchHttp, startAzurite, type Azurite } from "../helpers/azurite";
+import { fetchHttp, nodeSleep, startAzurite, type Azurite } from "../helpers/azurite";
 import { Clock, MemoryLocalFs, dec, enc } from "../helpers/memory";
 
 let azurite: Azurite;
@@ -52,7 +52,7 @@ describe("AzureBlobClient against Azurite", () => {
 			serviceUrl: parsed.serviceUrl!,
 			remotePrefix: parsed.remotePrefix ?? "",
 		});
-		const client = new AzureBlobClient(conn, fetchHttp);
+		const client = new AzureBlobClient(conn, fetchHttp, { sleep: nodeSleep });
 		await client.probe("");
 	});
 

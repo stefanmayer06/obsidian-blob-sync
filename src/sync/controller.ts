@@ -41,10 +41,10 @@ export class SyncController {
 	constructor(private readonly deps: SyncControllerDeps) {}
 
 	private get setTimer() {
-		return this.deps.setTimeout ?? ((fn: () => void, ms: number) => setTimeout(fn, ms));
+		return this.deps.setTimeout ?? ((fn: () => void, ms: number) => window.setTimeout(fn, ms));
 	}
 	private get clearTimer() {
-		return this.deps.clearTimeout ?? ((h: unknown) => clearTimeout(h as ReturnType<typeof setTimeout>));
+		return this.deps.clearTimeout ?? ((h: unknown) => window.clearTimeout(h as number));
 	}
 	private now(): number {
 		return this.deps.now?.() ?? Date.now();

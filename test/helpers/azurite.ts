@@ -94,6 +94,9 @@ export async function startAzurite(port = 20000 + Math.floor(Math.random() * 200
 	};
 }
 
+/** Retry back-off for clients created in Node (the plugin defaults to window timers). */
+export const nodeSleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
 /** HttpClient for Node (the plugin uses Obsidian's requestUrl instead). */
 export const fetchHttp: HttpClient = async (req) => {
 	const res = await fetch(req.url, {

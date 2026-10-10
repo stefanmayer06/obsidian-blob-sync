@@ -82,7 +82,7 @@ export class AzureBlobClient {
 	) {
 		this.retries = options.retries ?? 3;
 		this.retryDelayMs = options.retryDelayMs ?? 500;
-		this.sleep = options.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+		this.sleep = options.sleep ?? ((ms) => new Promise((r) => window.setTimeout(r, ms)));
 	}
 
 	get prefix(): string {
@@ -121,7 +121,12 @@ export class AzureBlobClient {
 				continue;
 			}
 			if (networkError !== undefined) {
-				const msg = networkError instanceof Error ? networkError.message : String(networkError);
+				const msg =
+					networkError instanceof Error
+						? networkError.message
+						: typeof networkError === "string"
+							? networkError
+							: "unknown error";
 				throw new AzureError(`${context}: network error (${msg})`, 0, "NetworkError");
 			}
 			return response!;

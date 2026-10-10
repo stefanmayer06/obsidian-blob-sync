@@ -18,7 +18,7 @@ import { AzureRemoteStore } from "../../src/sync/azure-remote";
 import { DEFAULT_ENGINE_OPTIONS, SyncEngine } from "../../src/sync/engine";
 import { createPathFilter } from "../../src/sync/filter";
 import { emptyState } from "../../src/sync/types";
-import { fetchHttp, startAzurite, type Azurite } from "../helpers/azurite";
+import { fetchHttp, nodeSleep, startAzurite, type Azurite } from "../helpers/azurite";
 import { Clock, MemoryLocalFs, dec } from "../helpers/memory";
 import { Cdp, launchObsidian, sleep, waitFor, type ObsidianInstance } from "../helpers/obsidian";
 
@@ -67,6 +67,7 @@ describe.skipIf(!OBSIDIAN_BIN)("Obsidian end-to-end", { timeout: 90_000 }, () =>
 				remotePrefix: "",
 			}),
 			fetchHttp,
+			{ sleep: nodeSleep },
 		);
 
 		// The "phone": a second device running the same sync engine.
@@ -82,6 +83,7 @@ describe.skipIf(!OBSIDIAN_BIN)("Obsidian end-to-end", { timeout: 90_000 }, () =>
 						remotePrefix: PREFIX,
 					}),
 					fetchHttp,
+					{ sleep: nodeSleep },
 				),
 			),
 			emptyState("phone"),
@@ -328,10 +330,37 @@ describe.skipIf(!OBSIDIAN_BIN)("Obsidian end-to-end", { timeout: 90_000 }, () =>
 			ev<boolean>(`return !!app.setting.modalEl.querySelector('.azure-blob-sync-test-result')`),
 		);
 		const labels = await ev<string>(`return app.setting.modalEl.querySelector('.vertical-tab-content').innerText`);
-		for (const label of ["Quick setup: paste a Blob SAS URL", "Storage account name", "Container name", "SAS token", "Remote folder", "Live sync", "Ignore patterns"]) {
+		for (const label of ["Quick setup: paste a blob SAS URL", "Storage account name", "Container name", "SAS token", "Remote folder", "Live sync", "Ignore patterns"]) {
 			expect(labels).toContain(label);
 		}
 		expect(labels).toMatch(/Permissions: racwdl/);
+
+		// Obsidian 1.13+ renders the declarative definitions, which makes them searchable.
+		const declarative = await ev<{ supported: boolean; groups: number }>(`
+			const tab = app.setting.pluginTabs.find(t => t.id === '${PLUGIN}');
+			return { supported: typeof tab.update === 'function', groups: (tab.settingItems ?? []).length };`);
+		if (declarative.supported) {
+			expect(declarative.groups).toBe(3);
+			const found = await waitFor("settings search finds the plugin's settings", () =>
+				ev<string | undefined>(`
+					const input = app.setting.modalEl.querySelector('input[type="search"]');
+					if (input.value !== 'remote folder') {
+						input.value = 'remote folder';
+						input.dispatchEvent(new Event('input', { bubbles: true }));
+					}
+					const text = app.setting.modalEl.innerText;
+					return text.includes('Remote folder') && text.includes('Azure Blob Sync') ? text : undefined;`),
+			);
+			expect(found).toContain("Optional folder inside the container");
+			await ev(`
+				const input = app.setting.modalEl.querySelector('input[type="search"]');
+				input.value = '';
+				input.dispatchEvent(new Event('input', { bubbles: true }));
+				app.setting.openTabById('${PLUGIN}');`);
+			await waitFor("settings tab shown again", () =>
+				ev<boolean>(`return !!app.setting.modalEl.querySelector('.azure-blob-sync-test-result')`),
+			);
+		}
 		await ev(
 			`[...app.setting.modalEl.querySelectorAll('.vertical-tab-content button')].find(b => b.innerText === 'Test connection').click();`,
 		);
@@ -352,8 +381,10 @@ describe.skipIf(!OBSIDIAN_BIN)("Obsidian end-to-end", { timeout: 90_000 }, () =>
 		// The test blob is cleaned up and never synced
 		expect((await remote.listBlobs("")).some((b) => b.name.includes("azure-blob-sync-test"))).toBe(false);
 
-		// Screenshots of the settings window for the README / review.
-		const settingsWindow = await Cdp.connect(obsidian.port, 10_000, (t) => t.title.startsWith("Settings"));
+		// Screenshots of the settings window (its own window on 1.14+, a modal in the main window before).
+		const settingsWindow = await Cdp.connect(obsidian.port, 10_000, (t) =>
+			declarative.supported ? t.title.startsWith("Settings") : t.url.startsWith("app://obsidian.md/index.html"),
+		);
 		try {
 			await settingsWindow.send("Emulation.setDeviceMetricsOverride", {
 				width: 1000,
