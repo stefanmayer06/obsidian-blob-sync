@@ -81,7 +81,10 @@ the repository. The *Release* GitHub Action builds and attaches them:
    same kind of checks the Community directory runs on every release.
 2. Publish a release on GitHub whose tag is **exactly** that version, e.g. `1.0.1` (no `v`
    prefix). Pushing the tag with git works too.
-3. The *Release* action attaches the three files to the release within a minute or two.
+3. The *Release* action attaches the three files to the release within a minute or two. It also
+   publishes a signed [build provenance attestation](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds)
+   for each file, so anyone can check that a download was built from this repository:
+   `gh attestation verify main.js --repo stefanmayer06/obsidian-blob-sync`.
 
 If a release is missing its files, open *Actions → Release → Run workflow* and enter the tag.
 The files are then built and attached to that existing release.

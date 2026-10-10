@@ -2,6 +2,9 @@ name: Release
 
 # Attaches main.js, manifest.json and styles.css to a GitHub release. BRAT and
 # manual installs download these files from the release, not from the repository.
+# Each file gets a signed build provenance attestation, so anyone can verify it
+# was built from this repository by this workflow:
+#   gh attestation verify main.js --repo stefanmayer06/obsidian-blob-sync
 #
 # Runs when a version tag is pushed, including the tag GitHub creates when you
 # publish a release on the website. If the release already exists, the files are
@@ -18,7 +21,10 @@ on:
         required: true
 
 permissions:
-  contents: write
+  contents: write # create the release and upload its files
+  id-token: write # sign the attestations (Sigstore)
+  attestations: write # store the attestations
+  artifact-metadata: write # record the attested files
 
 concurrency:
   group: release-${{ github.event.inputs.tag || github.ref_name }}
@@ -49,6 +55,13 @@ jobs:
             echo "::error::Tag '$TAG' does not match the version in manifest.json ('$version'). Obsidian and BRAT need them to be identical (no 'v' prefix)."
             exit 1
           fi
+      - name: Attest build provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            main.js
+            manifest.json
+            styles.css
       - name: Attach files to the release
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
