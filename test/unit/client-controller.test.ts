@@ -153,6 +153,114 @@ describe("AzureBlobClient (fake transport)", () => {
 		});
 	});
 
+	it("uploads large data in blocks and commits them with the conditions", async () => {
+		const requests: HttpRequest[] = [];
+		const client = new AzureBlobClient(
+			conn,
+			async (req) => {
+				requests.push(req);
+				return response(201, "", { etag: '"0xNEW"' });
+			},
+			{ chunkSize: 4 },
+		);
+		const props = await client.putBlob("my vault/big.cbr", enc("0123456789"), {
+			contentType: "application/x-cbr",
+			metadata: { mtime: "5" },
+			ifNoneMatchAny: true,
+		});
+		expect(props).toMatchObject({ etag: "0xNEW", size: 10, metadata: { mtime: "5" } });
+
+		const blocks = requests.slice(0, 3);
+		expect(blocks.map((r) => new TextDecoder().decode(r.body))).toEqual(["0123", "4567", "89"]);
+		const ids = blocks.map((r) => {
+			const url = new URL(r.url);
+			expect(url.pathname).toBe("/vault/my%20vault/big.cbr");
+			expect(url.searchParams.get("comp")).toBe("block");
+			expect(url.searchParams.get("sig")).toBe("a+b");
+			// Conditions and metadata only apply to the commit.
+			expect(r.headers["If-None-Match"]).toBeUndefined();
+			expect(r.headers["x-ms-meta-mtime"]).toBeUndefined();
+			return url.searchParams.get("blockid")!;
+		});
+		expect(new Set(ids.map((id) => id.length)).size).toBe(1);
+		expect(new Set(ids).size).toBe(3);
+
+		const commit = requests[3];
+		expect(requests).toHaveLength(4);
+		expect(new URL(commit.url).searchParams.get("comp")).toBe("blocklist");
+		expect(commit.headers["x-ms-blob-content-type"]).toBe("application/x-cbr");
+		expect(commit.headers["x-ms-meta-mtime"]).toBe("5");
+		expect(commit.headers["If-None-Match"]).toBe("*");
+		expect(commit.headers["x-ms-blob-type"]).toBeUndefined();
+		expect(new TextDecoder().decode(commit.body)).toContain(
+			`<BlockList>${ids.map((id) => `<Latest>${id}</Latest>`).join("")}</BlockList>`,
+		);
+
+		// Another upload of the same path uses fresh block IDs.
+		requests.length = 0;
+		await client.putBlob("my vault/big.cbr", enc("0123456789"));
+		expect(new URL(requests[0].url).searchParams.get("blockid")).not.toBe(ids[0]);
+
+		// Data that fits in one chunk is a single Put Blob.
+		requests.length = 0;
+		await client.putBlob("small.md", enc("0123"));
+		expect(requests).toHaveLength(1);
+		expect(requests[0].headers["x-ms-blob-type"]).toBe("BlockBlob");
+		expect(new URL(requests[0].url).searchParams.has("comp")).toBe(false);
+	});
+
+	it("downloads large blobs in ranges pinned to the first ETag", async () => {
+		const content = "0123456789";
+		let etag = '"0x1"';
+		const requests: HttpRequest[] = [];
+		const client = new AzureBlobClient(
+			conn,
+			async (req) => {
+				requests.push(req);
+				if (req.headers["If-Match"] && req.headers["If-Match"] !== etag) {
+					return response(412, "", { "x-ms-error-code": "ConditionNotMet" });
+				}
+				const range = /^bytes=(\d+)-(\d+)$/.exec(req.headers["x-ms-range"] ?? "");
+				if (!range) return response(200, content, { etag });
+				const start = Number(range[1]);
+				const end = Math.min(Number(range[2]), content.length - 1);
+				return response(206, content.slice(start, end + 1), {
+					etag,
+					"content-length": String(end - start + 1),
+					"content-range": `bytes ${start}-${end}/${content.length}`,
+					"x-ms-meta-mtime": "42",
+				});
+			},
+			{ chunkSize: 4 },
+		);
+		const { data, properties } = await client.getBlob("big.cbr");
+		expect(new TextDecoder().decode(data)).toBe(content);
+		expect(properties).toMatchObject({ etag: "0x1", size: 10, metadata: { mtime: "42" } });
+		expect(requests.map((r) => r.headers["x-ms-range"])).toEqual(["bytes=0-3", "bytes=4-7", "bytes=8-9"]);
+		expect(requests.map((r) => r.headers["If-Match"])).toEqual([undefined, '"0x1"', '"0x1"']);
+
+		// Replaced between two ranges: fail instead of mixing versions.
+		requests.length = 0;
+		const original = client.getBlob("big.cbr");
+		etag = '"0x2"';
+		const err = await original.catch((e) => e);
+		expect(isPreconditionFailure(err)).toBe(true);
+	});
+
+	it("downloads an empty blob although the range can't be satisfied", async () => {
+		const ranges: (string | undefined)[] = [];
+		const client = new AzureBlobClient(conn, async (req) => {
+			ranges.push(req.headers["x-ms-range"]);
+			return req.headers["x-ms-range"]
+				? response(416, "", { "x-ms-error-code": "InvalidRange" })
+				: response(200, "", { etag: '"0x1"', "content-length": "0" });
+		});
+		const { data, properties } = await client.getBlob("empty.md");
+		expect(data.byteLength).toBe(0);
+		expect(properties.size).toBe(0);
+		expect(ranges).toEqual([`bytes=0-${4 * 1024 * 1024 - 1}`, undefined]);
+	});
+
 	it("content types", () => {
 		expect(contentTypeFor("a/b.MD")).toMatch(/text\/markdown/);
 		expect(contentTypeFor("x.png")).toBe("image/png");

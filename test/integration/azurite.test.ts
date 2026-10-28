@@ -27,7 +27,7 @@ async function newContainer(permissions = "racwdl") {
 	return { name, sas };
 }
 
-function clientFor(container: string, sas: string, prefix = "") {
+function clientFor(container: string, sas: string, prefix = "", chunkSize?: number) {
 	const conn = resolveConnection({
 		accountName: "",
 		containerName: container,
@@ -35,7 +35,7 @@ function clientFor(container: string, sas: string, prefix = "") {
 		serviceUrl: azurite.serviceUrl,
 		remotePrefix: prefix,
 	});
-	return new AzureBlobClient(conn, fetchHttp, { retries: 0 });
+	return new AzureBlobClient(conn, fetchHttp, { retries: 0, chunkSize });
 }
 
 describe("AzureBlobClient against Azurite", () => {
@@ -106,6 +106,63 @@ describe("AzureBlobClient against Azurite", () => {
 		expect((await client.getBlob("empty.md")).data.byteLength).toBe(0);
 		const back = new Uint8Array((await client.getBlob("attachments/random.bin")).data);
 		expect(Buffer.from(back).equals(binary)).toBe(true);
+	});
+
+	it("transfers large files in blocks and ranges", async () => {
+		const { name, sas } = await newContainer();
+		const client = clientFor(name, sas, "", 64 * 1024);
+		const binary = randomBytes(300 * 1024 + 7);
+		const data = binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength) as ArrayBuffer;
+		const put = await client.putBlob("Comics/big.cbr", data, {
+			contentType: "application/x-cbr",
+			metadata: { mtime: "1700000000000" },
+			ifNoneMatchAny: true,
+		});
+		expect(put.size).toBe(data.byteLength);
+
+		const [listed] = await client.listBlobs("");
+		expect(listed).toMatchObject({ name: "Comics/big.cbr", etag: put.etag, size: data.byteLength });
+		expect(listed.metadata.mtime).toBe("1700000000000");
+		const props = await azurite.service.getContainerClient(name).getBlobClient("Comics/big.cbr").getProperties();
+		expect(props.contentType).toBe("application/x-cbr");
+
+		const got = await client.getBlob("Comics/big.cbr");
+		expect(Buffer.from(got.data).equals(binary)).toBe(true);
+		expect(got.properties).toMatchObject({ etag: put.etag, size: data.byteLength, metadata: { mtime: "1700000000000" } });
+
+		// Conditions are enforced on the commit, and a failed commit leaves the blob untouched.
+		const exists = await client.putBlob("Comics/big.cbr", data, { ifNoneMatchAny: true }).catch((e) => e);
+		expect(isPreconditionFailure(exists)).toBe(true);
+		const replaced = await client.putBlob("Comics/big.cbr", data.slice(1), { ifMatch: put.etag });
+		const stale = await client.putBlob("Comics/big.cbr", data, { ifMatch: put.etag }).catch((e) => e);
+		expect(isPreconditionFailure(stale)).toBe(true);
+		const after = await client.getBlob("Comics/big.cbr");
+		expect(after.properties.etag).toBe(replaced.etag);
+		expect(Buffer.from(after.data).equals(binary.subarray(1))).toBe(true);
+	});
+
+	it("doesn't mix versions when a blob is replaced mid-download", async () => {
+		const { name, sas } = await newContainer();
+		const writer = clientFor(name, sas);
+		await writer.putBlob("big.bin", randomBytes(200 * 1024).buffer as ArrayBuffer);
+		let requests = 0;
+		const conn = resolveConnection({
+			accountName: "",
+			containerName: name,
+			sasToken: sas,
+			serviceUrl: azurite.serviceUrl,
+			remotePrefix: "",
+		});
+		const reader = new AzureBlobClient(
+			conn,
+			async (req) => {
+				if (++requests === 2) await writer.putBlob("big.bin", randomBytes(200 * 1024).buffer as ArrayBuffer);
+				return fetchHttp(req);
+			},
+			{ retries: 0, chunkSize: 64 * 1024 },
+		);
+		const err = await new AzureRemoteStore(reader).download("big.bin").catch((e) => e);
+		expect(err).toBeInstanceOf(RemoteConflictError);
 	});
 
 	it("paginates listings", async () => {

@@ -66,14 +66,24 @@ export interface AzureBlobClientOptions {
 	retries?: number;
 	retryDelayMs?: number;
 	sleep?: (ms: number) => Promise<void>;
+	/** Larger uploads are sent in blocks, larger downloads in ranges of this size. */
+	chunkSize?: number;
 }
 
 const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
+
+/**
+ * On mobile, requestUrl hands request and response bodies to the native side
+ * as base64, which fails ("Invalid array length") or runs out of memory for
+ * files of a few tens of MB. Transfers are split so no request carries more.
+ */
+export const DEFAULT_CHUNK_SIZE = 4 * 1024 * 1024;
 
 export class AzureBlobClient {
 	private readonly retries: number;
 	private readonly retryDelayMs: number;
 	private readonly sleep: (ms: number) => Promise<void>;
+	private readonly chunkSize: number;
 
 	constructor(
 		private readonly conn: ResolvedConnection,
@@ -83,6 +93,7 @@ export class AzureBlobClient {
 		this.retries = options.retries ?? 3;
 		this.retryDelayMs = options.retryDelayMs ?? 500;
 		this.sleep = options.sleep ?? ((ms) => new Promise((r) => window.setTimeout(r, ms)));
+		this.chunkSize = Math.max(1, options.chunkSize ?? DEFAULT_CHUNK_SIZE);
 	}
 
 	get prefix(): string {
@@ -95,12 +106,14 @@ export class AzureBlobClient {
 		return `${this.conn.serviceUrl}/${encodeURIComponent(this.conn.containerName)}?${params}${sep}${this.conn.sasToken}`;
 	}
 
-	blobUrl(blobName: string): string {
+	blobUrl(blobName: string, query: Record<string, string> = {}): string {
 		const encoded = blobName
 			.split("/")
 			.map((s) => encodeURIComponent(s))
 			.join("/");
-		return `${this.conn.serviceUrl}/${encodeURIComponent(this.conn.containerName)}/${encoded}?${this.conn.sasToken}`;
+		const params = new URLSearchParams(query).toString();
+		const sep = params ? "&" : "";
+		return `${this.conn.serviceUrl}/${encodeURIComponent(this.conn.containerName)}/${encoded}?${params}${sep}${this.conn.sasToken}`;
 	}
 
 	private async send(request: HttpRequest, context: string): Promise<HttpResponse> {
@@ -190,35 +203,118 @@ export class AzureBlobClient {
 		if (response.status !== 200) throw this.toError(response, "Connect");
 	}
 
+	/** Downloads a blob; blobs larger than the chunk size are fetched in ranges. */
 	async getBlob(blobName: string): Promise<{ data: ArrayBuffer; properties: BlobProperties }> {
-		const response = await this.send(
-			{ url: this.blobUrl(blobName), method: "GET", headers: { "Cache-Control": "no-cache" } },
-			`Download "${blobName}"`,
-		);
-		if (response.status !== 200) throw this.toError(response, `Download "${blobName}"`);
-		return { data: response.arrayBuffer, properties: propertiesFromHeaders(response) };
+		const context = `Download "${blobName}"`;
+		const url = this.blobUrl(blobName);
+		const get = (headers: Record<string, string>) =>
+			this.send({ url, method: "GET", headers: { "Cache-Control": "no-cache", ...headers } }, context);
+
+		let response = await get({ "x-ms-range": `bytes=0-${this.chunkSize - 1}` });
+		// An empty blob has no byte 0, so the range can't be satisfied.
+		if (response.status === 416) response = await get({});
+		if (response.status === 200) return { data: response.arrayBuffer, properties: propertiesFromHeaders(response) };
+		if (response.status !== 206) throw this.toError(response, context);
+
+		const properties = propertiesFromHeaders(response);
+		const total = parseInt(/\/(\d+)$/.exec(response.headers["content-range"] ?? "")?.[1] ?? "", 10);
+		if (isNaN(total)) throw new AzureError(`${context}: the response has no valid Content-Range`, response.status);
+		properties.size = total;
+		const first = response.arrayBuffer;
+		if (first.byteLength >= total) return { data: first, properties };
+
+		const data = new Uint8Array(total);
+		data.set(new Uint8Array(first), 0);
+		let offset = first.byteLength;
+		while (offset < total) {
+			const end = Math.min(offset + this.chunkSize, total) - 1;
+			// If-Match: a blob replaced mid-download fails with 412 instead of mixing two versions.
+			response = await get({ "x-ms-range": `bytes=${offset}-${end}`, "If-Match": `"${properties.etag}"` });
+			if (response.status !== 206) throw this.toError(response, context);
+			const chunk = new Uint8Array(response.arrayBuffer);
+			if (chunk.byteLength === 0 || offset + chunk.byteLength > total) {
+				throw new AzureError(`${context}: unexpected response size`, response.status);
+			}
+			data.set(chunk, offset);
+			offset += chunk.byteLength;
+		}
+		return { data: data.buffer, properties };
 	}
 
+	/** Uploads a blob; data larger than the chunk size is staged in blocks and then committed. */
 	async putBlob(blobName: string, data: ArrayBuffer, options: PutBlobOptions = {}): Promise<BlobProperties> {
-		const headers: Record<string, string> = {
-			"x-ms-blob-type": "BlockBlob",
-			"Content-Type": options.contentType ?? "application/octet-stream",
-		};
+		const contentType = options.contentType ?? "application/octet-stream";
+		const headers: Record<string, string> = {};
 		for (const [key, value] of Object.entries(options.metadata ?? {})) {
 			headers[`x-ms-meta-${key}`] = value;
 		}
 		if (options.ifMatch) headers["If-Match"] = `"${normalizeEtag(options.ifMatch)}"`;
 		if (options.ifNoneMatchAny) headers["If-None-Match"] = "*";
 		const context = `Upload "${blobName}"`;
-		const response = await this.send(
-			{ url: this.blobUrl(blobName), method: "PUT", headers, body: data },
-			context,
-		);
+		const response =
+			data.byteLength <= this.chunkSize
+				? await this.send(
+						{
+							url: this.blobUrl(blobName),
+							method: "PUT",
+							headers: { "x-ms-blob-type": "BlockBlob", "Content-Type": contentType, ...headers },
+							body: data,
+						},
+						context,
+					)
+				: await this.putBlocks(blobName, data, { "x-ms-blob-content-type": contentType, ...headers }, context);
 		if (response.status !== 201) throw this.toError(response, context);
 		const props = propertiesFromHeaders(response);
 		props.size = data.byteLength;
 		props.metadata = { ...(options.metadata ?? {}) };
 		return props;
+	}
+
+	/**
+	 * Put Block for each chunk, then Put Block List with the given headers.
+	 * Blocks stay invisible until committed, and the commit is the only
+	 * request that carries the If-Match / If-None-Match conditions.
+	 */
+	private async putBlocks(
+		blobName: string,
+		data: ArrayBuffer,
+		commitHeaders: Record<string, string>,
+		context: string,
+	): Promise<HttpResponse> {
+		// Unique per upload, so devices uploading the same path never commit each other's blocks.
+		// All IDs have the same length, as Azure requires.
+		const uploadId = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) =>
+			b.toString(16).padStart(2, "0"),
+		).join("");
+		const blockIds: string[] = [];
+		for (let offset = 0; offset < data.byteLength; offset += this.chunkSize) {
+			const blockId = btoa(`${uploadId}-${String(blockIds.length).padStart(6, "0")}`);
+			blockIds.push(blockId);
+			const response = await this.send(
+				{
+					url: this.blobUrl(blobName, { comp: "block", blockid: blockId }),
+					method: "PUT",
+					headers: { "Content-Type": "application/octet-stream" },
+					body: data.slice(offset, offset + this.chunkSize),
+				},
+				context,
+			);
+			if (response.status !== 201) throw this.toError(response, context);
+		}
+		const xml =
+			`<?xml version="1.0" encoding="utf-8"?><BlockList>` +
+			blockIds.map((id) => `<Latest>${id}</Latest>`).join("") +
+			`</BlockList>`;
+		const body = new TextEncoder().encode(xml);
+		return this.send(
+			{
+				url: this.blobUrl(blobName, { comp: "blocklist" }),
+				method: "PUT",
+				headers: { "Content-Type": "application/xml; charset=utf-8", ...commitHeaders },
+				body: body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength),
+			},
+			context,
+		);
 	}
 
 	/** Deletes a blob. Returns false when it didn't exist. */
