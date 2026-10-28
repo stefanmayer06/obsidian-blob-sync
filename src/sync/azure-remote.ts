@@ -29,8 +29,14 @@ export class AzureRemoteStore implements RemoteStore {
 	}
 
 	async download(path: string): Promise<{ data: ArrayBuffer; info: RemoteFileInfo }> {
-		const { data, properties } = await this.client.getBlob(this.blobName(path));
-		return { data, info: toRemoteInfo(path, properties) };
+		try {
+			const { data, properties } = await this.client.getBlob(this.blobName(path));
+			return { data, info: toRemoteInfo(path, properties) };
+		} catch (e) {
+			// A blob replaced while it was downloaded in ranges.
+			if (isPreconditionFailure(e)) throw new RemoteConflictError(`"${path}" was changed by another device`);
+			throw e;
+		}
 	}
 
 	async upload(path: string, data: ArrayBuffer, options: UploadOptions): Promise<RemoteFileInfo> {

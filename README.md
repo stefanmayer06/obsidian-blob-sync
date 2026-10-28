@@ -167,6 +167,9 @@ up too.
   policy.
 - **Not real-time push**: Azure can't notify the app, so remote changes arrive on the next poll.
 - **Empty folders** aren't synced, because blob storage has no real folders.
+- **Large files** (comics, PDFs, videos) are uploaded in 4 MB blocks and downloaded in 4 MB
+  ranges. Obsidian's mobile app can't send or receive a single request that large, so this is
+  what makes them sync on phones and tablets. The *Maximum file size* setting still applies.
 - **Cost**: storage for a typical vault costs cents. Polling every 30 s while Obsidian is open
   adds at most ~86k list requests per device per month, which is well under US$1 at Hot-tier
   prices. A longer interval costs less.
