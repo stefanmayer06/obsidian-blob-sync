@@ -45,6 +45,8 @@ export default class AzureBlobSyncPlugin extends Plugin {
 	/** Deletions held back by the safety check in the last full sync. */
 	private heldDeletions = 0;
 	private lastFullSyncAt = 0;
+	/** Skipped files already in the log (path -> reason), so polls don't repeat them. */
+	private loggedSkips = new Map<string, string>();
 	private ready = false;
 	private settingTab: AzureSyncSettingTab | null = null;
 
@@ -369,7 +371,16 @@ export default class AzureBlobSyncPlugin extends Plugin {
 					`conflicts ${result.conflicts.length}, errors ${result.errors.length}`,
 			);
 		}
-		for (const s of result.skipped) this.log(`Skipped ${s.path}: ${s.reason}`);
+		for (const s of result.skipped) {
+			if (trigger !== "manual" && this.loggedSkips.get(s.path) === s.reason) continue;
+			this.loggedSkips.set(s.path, s.reason);
+			this.log(`Skipped ${s.path}: ${s.reason}`);
+		}
+		if (trigger !== "push") {
+			// A full sync reports every skipped file: forget the ones that sync again.
+			const skipped = new Set(result.skipped.map((s) => s.path));
+			for (const path of this.loggedSkips.keys()) if (!skipped.has(path)) this.loggedSkips.delete(path);
+		}
 		for (const e of result.errors) this.log(`Error ${e.path}: ${e.message}`);
 
 		for (const c of result.conflicts) {

@@ -11,7 +11,7 @@ import {
 	type SyncResult,
 	type SyncState,
 } from "./types";
-import { Mutex, conflictCopyPath, runWithConcurrency, sha256Hex } from "./util";
+import { Mutex, conflictCopyPath, formatSize, runWithConcurrency, sha256Hex } from "./util";
 
 export interface SyncEngineOptions {
 	direction: SyncDirection;
@@ -191,7 +191,7 @@ export class SyncEngine {
 						continue;
 					}
 					if (this.tooLarge(local.size)) {
-						actions.push({ kind: "skip", path, reason: "file is larger than the size limit" });
+						actions.push({ kind: "skip", path, reason: this.tooLargeReason(local.size) });
 						continue;
 					}
 					actions.push({
@@ -214,6 +214,10 @@ export class SyncEngine {
 
 	private tooLarge(size: number): boolean {
 		return this.options.maxFileSize > 0 && size > this.options.maxFileSize;
+	}
+
+	private tooLargeReason(size: number): string {
+		return `${formatSize(size)} is over the ${formatSize(this.options.maxFileSize)} size limit`;
 	}
 
 	private async hashLocal(file: LocalFileInfo): Promise<string> {
@@ -266,9 +270,8 @@ export class SyncEngine {
 		if (!local && !remote) {
 			return known ? { kind: "forget", path } : null;
 		}
-		if ((local && this.tooLarge(local.size)) || (remote && this.tooLarge(remote.size))) {
-			return { kind: "skip", path, reason: "file is larger than the size limit" };
-		}
+		const size = Math.max(local?.size ?? 0, remote?.size ?? 0);
+		if (this.tooLarge(size)) return { kind: "skip", path, reason: this.tooLargeReason(size) };
 
 		if (direction === "upload-only") {
 			if (local) {

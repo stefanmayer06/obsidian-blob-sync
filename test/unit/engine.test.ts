@@ -384,8 +384,17 @@ describe("SyncEngine – races and safety", () => {
 		a.fs.set("big.pdf", "x".repeat(100));
 		const r = await a.engine.fullSync();
 		expect(r.uploaded).toEqual(["small.md"]);
-		expect(r.skipped.map((s) => s.path)).toEqual(["big.pdf"]);
+		expect(r.skipped).toEqual([{ path: "big.pdf", reason: "100 B is over the 10 B size limit" }]);
 		expect(remote.blobs.has("big.pdf")).toBe(false);
+
+		await remote.putExternal("huge.zip", "y".repeat(50));
+		a.fs.set("big.pdf", "x".repeat(200));
+		expect((await a.engine.pushPaths(["big.pdf"])).skipped).toEqual([
+			{ path: "big.pdf", reason: "200 B is over the 10 B size limit" },
+		]);
+		const r2 = await a.engine.fullSync();
+		expect(r2.skipped.map((s) => s.path)).toEqual(["big.pdf", "huge.zip"]);
+		expect(a.fs.files.has("huge.zip")).toBe(false);
 	});
 
 	it("reports per-file errors and keeps going", async () => {
