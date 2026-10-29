@@ -7,6 +7,16 @@ export async function sha256Hex(data: ArrayBuffer): Promise<string> {
 	return hex;
 }
 
+/**
+ * "312.5 MB", in the unit the size limit is set in. Rounded up, so a file
+ * just over the limit never reads as the same size as the limit.
+ */
+export function formatSize(bytes: number): string {
+	const [value, unit] =
+		bytes < 1024 ? [bytes, "B"] : bytes < 1024 * 1024 ? [bytes / 1024, "KB"] : [bytes / (1024 * 1024), "MB"];
+	return `${Math.ceil(value * 10) / 10} ${unit}`;
+}
+
 /** Runs the tasks with at most `limit` running at the same time. */
 export async function runWithConcurrency<T>(
 	items: T[],

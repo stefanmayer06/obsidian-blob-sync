@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { decodeXmlEntities, normalizeEtag, parseErrorXml, parseListBlobsXml } from "../../src/azure/xml";
 import { createPathFilter, globToRegExp, parsePatterns } from "../../src/sync/filter";
-import { Mutex, conflictCopyPath, runWithConcurrency, sha256Hex } from "../../src/sync/util";
+import { Mutex, conflictCopyPath, formatSize, runWithConcurrency, sha256Hex } from "../../src/sync/util";
 import { enc } from "../helpers/memory";
 
 const LIST_XML = `﻿<?xml version="1.0" encoding="utf-8"?>
@@ -140,6 +140,15 @@ describe("utilities", () => {
 		expect(await sha256Hex(new ArrayBuffer(0))).toBe(
 			"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 		);
+	});
+
+	it("formatSize", () => {
+		expect(formatSize(0)).toBe("0 B");
+		expect(formatSize(1023)).toBe("1023 B");
+		expect(formatSize(1536)).toBe("1.5 KB");
+		expect(formatSize(200 * 1024 * 1024)).toBe("200 MB");
+		expect(formatSize(200 * 1024 * 1024 + 1)).toBe("200.1 MB");
+		expect(formatSize(5000 * 1024 * 1024)).toBe("5000 MB");
 	});
 
 	it("conflictCopyPath", () => {
