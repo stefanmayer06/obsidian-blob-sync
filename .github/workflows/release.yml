@@ -52,7 +52,8 @@ jobs:
         run: |
           version=$(node -p "require('./manifest.json').version")
           if [ "$version" != "$TAG" ]; then
-            echo "::error::Tag '$TAG' does not match the version in manifest.json ('$version'). Obsidian and BRAT need them to be identical (no 'v' prefix)."
+            echo "::error::Tag '$TAG' points at commit $(git rev-parse --short HEAD), whose manifest.json says '$version'. Obsidian and BRAT need them to be identical (no 'v' prefix)."
+            echo "::error::If the version bump to '$TAG' is already on main, move the tag there; pushing it runs this workflow again: git fetch origin && git tag -f $TAG origin/main && git push -f origin refs/tags/$TAG"
             exit 1
           fi
       - name: Attest build provenance

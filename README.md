@@ -84,7 +84,8 @@ the repository. The *Release* GitHub Action builds and attaches them:
    commit to `main`. Run `npm run lint` first: it applies Obsidian's official plugin rules, the
    same kind of checks the Community directory runs on every release.
 2. Publish a release on GitHub whose tag is **exactly** that version, e.g. `1.0.1` (no `v`
-   prefix). Pushing the tag with git works too.
+   prefix). Pushing the tag with git works too. Do this *after* step 1 is on `main`: the tag
+   must point at a commit whose `manifest.json` already has the new version.
 3. The *Release* action attaches the three files to the release within a minute or two. It also
    publishes a signed [build provenance attestation](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds)
    for each file, so anyone can check that a download was built from this repository:
@@ -92,6 +93,16 @@ the repository. The *Release* GitHub Action builds and attaches them:
 
 If a release is missing its files, open *Actions → Release → Run workflow* and enter the tag.
 The files are then built and attached to that existing release.
+
+If the action fails with *"Tag … points at commit …, whose manifest.json says …"*, the tag was
+created before the version bump. Move the tag to `main`. Pushing it runs the action again, and
+the action attaches the files to the existing release:
+
+```bash
+git fetch origin && git tag -f 1.0.5 origin/main && git push -f origin refs/tags/1.0.5
+```
+
+Replace `1.0.5` with your version.
 
 ## 3. Connect
 
